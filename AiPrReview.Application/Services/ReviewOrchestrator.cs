@@ -29,31 +29,31 @@ public class ReviewOrchestrator
         _logger = logger;
     }
 
-    public async Task ExecuteReviewAsync(string repositoryId, int pullRequestId)
+    public async Task ExecuteReviewAsync(string repoName, int pullRequestId, string provider)
     {
         try
         {
-            _logger.LogInformation("Starting review for repository {RepoId}, PR {PrId}", repositoryId, pullRequestId);
+            _logger.LogInformation("Starting review for repository {RepoName}, PR {PrId}", repoName, pullRequestId);
 
-            // 1. Load repository config
-            var repoConfig = await _configService.GetRepositoryConfigByNameAsync(repositoryId);
-            if (repoConfig == null || !repoConfig.IsActive)
-                throw new RepositoryNotFoundException(repositoryId);
+            // Convert the string 'provider' to the enum 'ProviderType'
+            if (!Enum.TryParse<ProviderType>(provider, true, out var providerType))
+            {
+                throw new ArgumentException($"Invalid provider type: {provider}", nameof(provider));
+            }
 
-            // 2. Get active AI provider (with fallback)
+            // Get global provider config
+            var providerConfig = await _configService.GetProviderConfigAsync(providerType);
+
+            // 1. Get active AI provider (with fallback)
             var (llmProvider, llmSettings) = await _configService.GetActiveLlmProviderAsync();
 
-            // 3. Load review config
-            var reviewConfig = await _configService.GetReviewConfigAsync(repoConfig.Id)
-                               ?? new ReviewConfig { ReviewStrategy = ReviewStrategy.Batch };
+            // 2. Create repository provider using the factory interface
+            var repoProvider = _repoProviderFactory.Create(providerConfig, repoName);
 
-            // 4. Create repository provider using the factory interface
-            var repoProvider = _repoProviderFactory.Create(repoConfig);
+            // 3. Fetch PR data
+            var prInfo = await repoProvider.GetPullRequestInfoAsync(providerConfig.ApiUrl, pullRequestId);
 
-            // 5. Fetch PR data
-            var prInfo = await repoProvider.GetPullRequestInfoAsync(repoConfig.ApiUrl, pullRequestId);
-
-            var changes = await repoProvider.GetPullRequestChangesAsync(repoConfig.ApiUrl, pullRequestId);
+            var changes = await repoProvider.GetPullRequestChangesAsync(providerConfig.ApiUrl, pullRequestId);
 
             var changedFiles = changes.Select(c => new ChangedFile
             {
@@ -62,37 +62,37 @@ public class ReviewOrchestrator
                 Diff = c.Diff
             }).ToList();
 
-            // 7. Create AI client using the factory interface
+            // 4. Create AI client using the factory interface
             var llmClient = _llmClientFactory.Create(llmProvider.Name, llmSettings);
 
-            // 8. Execute review strategy
+            // 5. Execute review strategy
             var comments = await _strategyExecutor.ExecuteAsync(
-                reviewConfig.ReviewStrategy,
+                providerConfig.ReviewStrategy,
                 prInfo,
+                providerConfig,
                 changedFiles,
-                reviewConfig,
                 llmClient,
                 CancellationToken.None);
 
-            // 9. Publish comments
+            // 6. Publish comments
             if (comments.Any())
             {
-                await repoProvider.PublishReviewCommentsAsync(repoConfig.ApiUrl, pullRequestId, comments);
-                _logger.LogInformation("Published {Count} comments for PR {PrId}", comments.Count, pullRequestId);
+                await repoProvider.PublishReviewCommentsAsync(providerConfig.ApiUrl, pullRequestId, comments, providerConfig.PublishMode);
+                _logger.LogInformation("Published {Count} comments for PR {PrId}", comments.Count(), pullRequestId);
             }
             else
             {
                 _logger.LogInformation("No issues found for PR {PrId}", pullRequestId);
             }
         }
-        catch (RepositoryNotFoundException ex)
+        catch (ProviderNotFoundException ex)
         {
-            _logger.LogError(ex, "Repository not found: {RepoId}", repositoryId);
+            _logger.LogError(ex, "Provider {Provider} not found for repository {RepoName}. Review cannot be executed.", provider, repoName);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error executing review for repository {RepoId}, PR {PrId}", repositoryId, pullRequestId);
+            _logger.LogError(ex, "Error executing review for repository {RepoName}, PR {PrId}", repoName, pullRequestId);
             throw;
         }
     }

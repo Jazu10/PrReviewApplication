@@ -17,57 +17,45 @@ public class RepositoryProviderFactory : IRepositoryProviderFactory
         _serviceProvider = serviceProvider;
     }
 
-    public IRepositoryProvider Create(RepositoryConfig config)
+    public IRepositoryProvider Create(ProviderConfig config, string repoName)
     {
         return config.Provider switch
         {
-            ProviderType.GitHub => CreateGitHubProvider(config),
-            ProviderType.AzureDevOps => CreateAzureDevOpsProvider(config),
+            ProviderType.GitHub => CreateGitHubProvider(config, repoName),
+            ProviderType.AzureDevOps => CreateAzureDevOpsProvider(config, repoName),
             _ => throw new NotSupportedException($"Provider {config.Provider} not supported.")
         };
     }
 
-    private IRepositoryProvider CreateGitHubProvider(RepositoryConfig config)
+    private IRepositoryProvider CreateGitHubProvider(ProviderConfig config, string repoName)
     {
-        var (owner, repo) = ExtractGitHubOwnerAndRepo(config.ApiUrl, config.Name);
+        var (owner, repo) = ParseGitHubRepoName(repoName);
         var logger = _serviceProvider.GetRequiredService<ILogger<GitHubRepositoryProvider>>();
         return new GitHubRepositoryProvider(config.ApiUrl, config.AccessToken, owner, repo, logger);
     }
 
-    private IRepositoryProvider CreateAzureDevOpsProvider(RepositoryConfig config)
+    private IRepositoryProvider CreateAzureDevOpsProvider(ProviderConfig config, string repoName)
     {
-        var organization = ExtractAzureDevOpsOrganization(config.ApiUrl);
-        if (string.IsNullOrEmpty(config.ProjectName))
-            throw new ArgumentException("ProjectName is required for Azure DevOps repository.");
+        var (organization, project, repository) = ParseAzureDevOpsRepoName(repoName);
+        // For Azure DevOps, the ApiUrl might be "https://dev.azure.com/{organization}" or a custom base URL.
+        // We'll pass the ApiUrl as is; the provider will construct the full endpoint.
         var logger = _serviceProvider.GetRequiredService<ILogger<AzureDevOpsRepositoryProvider>>();
-        return new AzureDevOpsRepositoryProvider(organization, config.ProjectName, config.Name, config.AccessToken, logger);
+        return new AzureDevOpsRepositoryProvider(config.ApiUrl, organization, project, repository, config.AccessToken, logger);
     }
 
-    private static (string owner, string repo) ExtractGitHubOwnerAndRepo(string apiUrl, string repoName)
+    private static (string owner, string repo) ParseGitHubRepoName(string repoName)
     {
-        // Expected API URL format: "https://api.github.com/repos/{owner}/{repo}"
-        // If not, fallback to extracting from repoName (if stored as "owner/repo") or throw.
-        var uri = new Uri(apiUrl);
-        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length >= 2 && segments[0].Equals("repos", StringComparison.OrdinalIgnoreCase))
-        {
-            return (segments[1], repoName);
-        }
-        // Fallback: if repoName contains "/", treat it as owner/repo
-        var nameParts = repoName.Split('/');
-        if (nameParts.Length == 2)
-            return (nameParts[0], nameParts[1]);
-        throw new ArgumentException($"Unable to extract owner from GitHub API URL: {apiUrl}. Ensure URL contains '/repos/owner/' or store repository name as 'owner/repo'.");
+        var parts = repoName.Split('/');
+        if (parts.Length != 2)
+            throw new ArgumentException($"GitHub repository name must be in format 'owner/repo'. Actual: {repoName}");
+        return (parts[0], parts[1]);
     }
 
-    private static string ExtractAzureDevOpsOrganization(string apiUrl)
+    private static (string organization, string project, string repository) ParseAzureDevOpsRepoName(string repoName)
     {
-        var uri = new Uri(apiUrl);
-        if (!uri.Host.Contains("dev.azure.com"))
-            throw new NotSupportedException("Only Azure DevOps dev.azure.com URLs are supported.");
-        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length == 0)
-            throw new ArgumentException("Azure DevOps URL must contain organization.");
-        return segments[0];
+        var parts = repoName.Split('/');
+        if (parts.Length != 3)
+            throw new ArgumentException($"Azure DevOps repository name must be in format 'organization/project/repository'. Actual: {repoName}");
+        return (parts[0], parts[1], parts[2]);
     }
 }

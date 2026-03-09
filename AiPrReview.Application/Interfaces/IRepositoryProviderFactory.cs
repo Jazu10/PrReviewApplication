@@ -10,6 +10,6 @@ namespace AiPrReview.Application.Interfaces
 {
     public interface IRepositoryProviderFactory
     {
-        IRepositoryProvider Create(RepositoryConfig config);
+        IRepositoryProvider Create(ProviderConfig config, string repoName);
     }
 }

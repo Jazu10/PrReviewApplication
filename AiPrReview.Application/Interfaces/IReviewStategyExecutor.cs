@@ -10,8 +10,8 @@ namespace AiPrReview.Application.Interfaces
         Task<IReadOnlyList<ReviewComment>> ExecuteAsync(
             ReviewStrategy strategy,
             PullRequestInfo prInfo,
+            ProviderConfig config,
             IReadOnlyList<ChangedFile> files,
-            ReviewConfig config,
             ILlmClient llmClient,
             CancellationToken cancellationToken);
     }

@@ -1,4 +1,5 @@
 ﻿using AiPrReview.Core.Entities;
+using AiPrReview.Core.Enums;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,8 +8,8 @@ using System.Threading.Tasks;
 
 namespace AiPrReview.Core.Interfaces
 {
-    public interface IReviewConfigRepository
+    public interface IProviderConfigRepository
     {
-        Task<ReviewConfig?> GetByRepositoryIdAsync(Guid repositoryId);
+        Task<ProviderConfig?> GetByProviderAsync(ProviderType provider);
     }
 }

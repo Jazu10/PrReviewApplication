@@ -27,8 +27,8 @@ public class ReviewStrategyExecutor : IReviewStrategyExecutor
     public async Task<IReadOnlyList<ReviewComment>> ExecuteAsync(
         ReviewStrategy strategy,
         PullRequestInfo prInfo,
+        ProviderConfig config,
         IReadOnlyList<ChangedFile> files,
-        ReviewConfig config,
         ILlmClient llmClient,
         CancellationToken cancellationToken)
     {
@@ -43,7 +43,7 @@ public class ReviewStrategyExecutor : IReviewStrategyExecutor
     private async Task<IReadOnlyList<ReviewComment>> BatchReviewAsync(
      PullRequestInfo prInfo,
      IReadOnlyList<ChangedFile> files,
-     ReviewConfig config,
+     ProviderConfig config,
      ILlmClient llmClient,
      CancellationToken cancellationToken)
     {
@@ -62,7 +62,7 @@ public class ReviewStrategyExecutor : IReviewStrategyExecutor
     private async Task<IReadOnlyList<ReviewComment>> FileLevelReviewAsync(
         PullRequestInfo prInfo,
         IReadOnlyList<ChangedFile> files,
-        ReviewConfig config,
+        ProviderConfig config,
         ILlmClient llmClient,
         CancellationToken cancellationToken)
     {

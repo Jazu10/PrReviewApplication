@@ -2,11 +2,13 @@
 using AiPrReview.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 using AiPrReview.Core.Dto;
+using AiPrReview.Core.Enums;
 
 namespace AiPrReview.Infrastructure.RepositoryProviders;
 
 public class GitHubRepositoryProvider : IRepositoryProvider
 {
+    private readonly string _apiUrl;
     private readonly GitHubClient _client;
     private readonly string _repoOwner;
     private readonly string _repoName;
@@ -19,7 +21,8 @@ public class GitHubRepositoryProvider : IRepositoryProvider
         string repoName,
         ILogger<GitHubRepositoryProvider> logger)
     {
-        _client = new GitHubClient(new ProductHeaderValue("AiPrReview"), new Uri(apiUrl));
+        _apiUrl = apiUrl;
+        _client = new GitHubClient(new ProductHeaderValue("AiPrReview"), new Uri(_apiUrl));
         _client.Credentials = new Credentials(token);
         _repoOwner = owner;
         _repoName = repoName;
@@ -125,7 +128,7 @@ public class GitHubRepositoryProvider : IRepositoryProvider
         }
     }
 
-    public async Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments)
+    public async Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments, PublishMode publishMode)
     {
         try
         {

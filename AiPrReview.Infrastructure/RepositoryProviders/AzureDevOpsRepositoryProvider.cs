@@ -9,12 +9,14 @@ using AiPrReview.Core.Dto;
 using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
+using AiPrReview.Core.Enums;
 
 namespace AiPrReview.Infrastructure.RepositoryProviders;
 
 public class AzureDevOpsRepositoryProvider : IRepositoryProvider
 {
     private readonly HttpClient _httpClient;
+    private readonly string _apiUrl;
     private readonly string _organization;
     private readonly string _project;
     private readonly string _repositoryId;
@@ -22,18 +24,20 @@ public class AzureDevOpsRepositoryProvider : IRepositoryProvider
     private readonly ILogger<AzureDevOpsRepositoryProvider> _logger;
 
     public AzureDevOpsRepositoryProvider(
+        string apiUrl,
         string organization,
         string project,
         string repositoryId,
         string accessToken,
         ILogger<AzureDevOpsRepositoryProvider> logger)
     {
+        _apiUrl = apiUrl;
         _organization = organization;
         _project = project;
         _repositoryId = repositoryId;
         _logger = logger;
 
-        _baseUrl = $"https://dev.azure.com/{_organization}/{Uri.EscapeDataString(_project)}/_apis/git/repositories/{Uri.EscapeDataString(_repositoryId)}";
+        _baseUrl = $"{_apiUrl.TrimEnd('/')}/{_organization}/{Uri.EscapeDataString(_project)}/_apis/git/repositories/{Uri.EscapeDataString(_repositoryId)}";
 
         _httpClient = new HttpClient();
         var patBytes = Encoding.ASCII.GetBytes($":{accessToken}");
@@ -209,35 +213,70 @@ public class AzureDevOpsRepositoryProvider : IRepositoryProvider
         }
     }
 
-    public async Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments)
+    public async Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments, PublishMode publishMode)
     {
         if (comments == null || !comments.Any()) return;
 
         var threadUrl = $"{_baseUrl}/pullrequests/{prId}/threads?api-version=7.0";
 
-        foreach (var comment in comments)
+        if (publishMode == PublishMode.Single)
         {
-            // Inside your foreach loop in PublishReviewCommentsAsync:
             var sb = new StringBuilder();
-            sb.AppendLine($"### 🤖 AI Review: `{Path.GetFileName(comment.FilePath)}` ");
+            sb.AppendLine("## 🤖 AI Pull Request Review Summary");
             sb.AppendLine("---");
-            sb.AppendLine($"**🔍 Analysis:** {comment.Issue}");
-            sb.AppendLine();
-            sb.AppendLine("**💡 Suggested Fix:**");
-            sb.AppendLine("```csharp");
-            sb.AppendLine(comment.Suggestion); // Now cleaned by the parser
-            sb.AppendLine("```");
 
-            var payload = new
+            foreach (var comment in comments)
             {
-                comments = new[] { new { content = sb.ToString(), commentType = 1 } },
-                status = 1, // Active
-                threadContext = new { filePath = comment.FilePath }
-            };
+                sb.AppendLine($"### 📄 `{Path.GetFileName(comment.FilePath)}` ");
+                sb.AppendLine($"**🔍 Analysis:** {comment.Issue.Trim()}");
+                sb.AppendLine();
+                sb.AppendLine("**💡 Suggested Fix:**");
+                sb.AppendLine("```csharp");
+                sb.AppendLine(comment.Suggestion.Trim());
+                sb.AppendLine("```");
+                sb.AppendLine("---"); // Separator between files in the single comment
+            }
 
-            var json = JsonSerializer.Serialize(payload);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            await _httpClient.PostAsync(threadUrl, content);
+            await PostToAzureDevOps(threadUrl, sb.ToString(), null);
+        }
+        else
+        {
+            foreach (var comment in comments)
+            {
+                var sb = new StringBuilder();
+                sb.AppendLine($"### 🤖 AI Review: `{Path.GetFileName(comment.FilePath)}` ");
+                sb.AppendLine("---");
+                sb.AppendLine($"**🔍 Analysis:** {comment.Issue.Trim()}");
+                sb.AppendLine();
+                sb.AppendLine("**💡 Suggested Fix:**");
+                sb.AppendLine("```csharp");
+                sb.AppendLine(comment.Suggestion.Trim());
+                sb.AppendLine("```");
+
+                // Passing the filePath in threadContext pins the comment to that specific file in the UI
+                await PostToAzureDevOps(threadUrl, sb.ToString(), comment.FilePath);
+            }
+        }
+    }
+
+    private async Task PostToAzureDevOps(string url, string content, string? filePath)
+    {
+        var payload = new
+        {
+            comments = new[] { new { content = content, commentType = 1 } },
+            status = 1, // Active
+            threadContext = filePath != null ? new { filePath = filePath } : null
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        var body = new StringContent(json, Encoding.UTF8, "application/json");
+
+        var response = await _httpClient.PostAsync(url, body);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Failed to post comment. Status: {Status}, Error: {Error}", response.StatusCode, error);
         }
     }
 

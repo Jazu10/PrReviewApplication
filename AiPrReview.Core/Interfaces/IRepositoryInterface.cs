@@ -1,4 +1,5 @@
 ﻿using AiPrReview.Core.Dto;
+using AiPrReview.Core.Enums;
 
 namespace AiPrReview.Core.Interfaces;
 
@@ -14,5 +15,5 @@ public interface IRepositoryProvider
 
     Task<string> GetFileContentAsync(string repoApiUrl, string filePath, string commitSha);
 
-    Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments);
+    Task PublishReviewCommentsAsync(string repoApiUrl, int prId, IReadOnlyList<ReviewComment> comments, PublishMode publishMode);
 }

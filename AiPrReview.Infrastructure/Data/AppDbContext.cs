@@ -9,19 +9,12 @@ public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
-    public DbSet<RepositoryConfig> Repositories { get; set; }
+    public DbSet<ProviderConfig> ProviderConfigs { get; set; }
     public DbSet<LlmProvider> LlmProviders { get; set; }
     public DbSet<LlmProviderSetting> LlmProviderSettings { get; set; }
-    public DbSet<ReviewConfig> ReviewConfigurations { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<RepositoryConfig>(entity =>
-        {
-            entity.HasKey(e => e.Id);
-            entity.Property(e => e.Provider).HasConversion<string>();
-        });
-
         modelBuilder.Entity<LlmProvider>(entity =>
         {
             entity.HasKey(e => e.Id);
@@ -35,11 +28,12 @@ public class AppDbContext : DbContext
             entity.HasKey(e => new { e.ProviderId, e.Key });
         });
 
-        modelBuilder.Entity<ReviewConfig>(entity =>
+        modelBuilder.Entity<ProviderConfig>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => e.RepositoryId).IsUnique();
+            entity.Property(e => e.Provider).HasConversion<string>();
             entity.Property(e => e.ReviewStrategy).HasConversion<string>();
+            entity.Property(e => e.PublishMode).HasConversion<string>();
         });
     }
 }

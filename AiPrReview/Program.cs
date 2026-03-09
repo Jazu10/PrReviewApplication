@@ -35,9 +35,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(sqlConnectionString));
 
 // Repositories
-builder.Services.AddScoped<IRepositoryConfigRepository, SqlRepositoryConfigRepository>();
+builder.Services.AddScoped<IProviderConfigRepository, SqlProviderConfigRepository>();
 builder.Services.AddScoped<ILlmProviderRepository, SqlLlmProviderRepository>();
-builder.Services.AddScoped<IReviewConfigRepository, SqlReviewConfigRepository>();
+builder.Services.AddScoped<IProviderConfigRepository, SqlProviderConfigRepository>();
 
 // Caching
 builder.Services.AddMemoryCache();

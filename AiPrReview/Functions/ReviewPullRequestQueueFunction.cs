@@ -26,7 +26,7 @@ public class ReviewPullRequestQueueFunction
 
         try
         {
-            await _orchestrator.ExecuteReviewAsync(message.RepositoryId, message.PullRequestId);
+            await _orchestrator.ExecuteReviewAsync(message.RepositoryId, message.PullRequestId, message.Provider);
             _logger.LogInformation("Successfully processed queued review for repository {RepoId}, PR {PrId}",
                 message.RepositoryId, message.PullRequestId);
         }
