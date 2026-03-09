@@ -1,7 +1,9 @@
-﻿using System.Text;
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Polly;
 using AiPrReview.Core.Interfaces;
+using AiPrReview.Infrastructure.Telemetry;
 
 namespace AiPrReview.Infrastructure.LlmClients;
 
@@ -14,10 +16,15 @@ public class OpenAIClient : ILlmClient
     private readonly string _systemPrompt;
     private readonly string _url;
     private readonly IAsyncPolicy _retryPolicy;
+    private readonly AiUsageLogger _usageLogger;
 
-    public OpenAIClient(IDictionary<string, string> settings, IAsyncPolicy retryPolicy)
+    public OpenAIClient(
+        IDictionary<string, string> settings,
+        IAsyncPolicy retryPolicy,
+        HttpClient httpClient,
+        AiUsageLogger usageLogger)
     {
-        _httpClient = new HttpClient();
+        _httpClient = httpClient;
         _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {settings["ApiKey"]}");
         _model = settings["Model"];
         _temperature = double.Parse(settings["Temperature"]);
@@ -25,6 +32,7 @@ public class OpenAIClient : ILlmClient
         _systemPrompt = settings["SystemPrompt"];
         _url = settings["Url"];
         _retryPolicy = retryPolicy;
+        _usageLogger = usageLogger;
     }
 
     public async Task<string> ReviewAsync(string userPrompt, CancellationToken cancellationToken = default)
@@ -42,12 +50,17 @@ public class OpenAIClient : ILlmClient
             max_tokens = _maxTokens
         };
 
-        // Use a fresh StringContent for each retry to avoid stream-read issues
+        var stopwatch = Stopwatch.StartNew();
+
         var response = await _retryPolicy.ExecuteAsync(async () =>
         {
+            // Use a fresh StringContent for each retry to avoid stream-read issues
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
             return await _httpClient.PostAsync(_url, content, cancellationToken);
         });
+
+        stopwatch.Stop();
+        _usageLogger.LogUsage("openai", 0, 0, stopwatch.Elapsed);
 
         response.EnsureSuccessStatusCode();
 

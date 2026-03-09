@@ -1,4 +1,4 @@
-﻿using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using AiPrReview.Application.Services;
 using AiPrReview.Infrastructure.BackgroundJobs;
@@ -23,7 +23,6 @@ public class ReviewPullRequestQueueFunction
     {
         _logger.LogInformation("Processing queued review for repository {RepoId}, PR {PrId}",
             message.RepositoryId, message.PullRequestId);
-
         try
         {
             await _orchestrator.ExecuteReviewAsync(message.RepositoryId, message.PullRequestId, message.Provider);

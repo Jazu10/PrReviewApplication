@@ -10,6 +10,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiPrReview.Infrastructure",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiPrReview.Application", "AiPrReview.Application\AiPrReview.Application.csproj", "{BBE0CF1B-11D6-46B7-8DB6-9F24545E1A24}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AiPrReview.Tests", "AiPrReview.Tests\AiPrReview.Tests.csproj", "{C1F7E8D2-4A5B-4E2C-9B43-0C9C9D9A1234}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -32,6 +34,10 @@ Global
 		{BBE0CF1B-11D6-46B7-8DB6-9F24545E1A24}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BBE0CF1B-11D6-46B7-8DB6-9F24545E1A24}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BBE0CF1B-11D6-46B7-8DB6-9F24545E1A24}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1F7E8D2-4A5B-4E2C-9B43-0C9C9D9A1234}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1F7E8D2-4A5B-4E2C-9B43-0C9C9D9A1234}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C1F7E8D2-4A5B-4E2C-9B43-0C9C9D9A1234}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1F7E8D2-4A5B-4E2C-9B43-0C9C9D9A1234}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -1,7 +1,9 @@
-﻿using System.Text;
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using Polly;
 using AiPrReview.Core.Interfaces;
+using AiPrReview.Infrastructure.Telemetry;
 
 namespace AiPrReview.Infrastructure.LlmClients;
 
@@ -14,10 +16,15 @@ public class ClaudeClient : ILlmClient
     private readonly string _systemPrompt;
     private readonly string _url;
     private readonly IAsyncPolicy _retryPolicy;
+    private readonly AiUsageLogger _usageLogger;
 
-    public ClaudeClient(IDictionary<string, string> settings, IAsyncPolicy retryPolicy)
+    public ClaudeClient(
+        IDictionary<string, string> settings,
+        IAsyncPolicy retryPolicy,
+        HttpClient httpClient,
+        AiUsageLogger usageLogger)
     {
-        _httpClient = new HttpClient();
+        _httpClient = httpClient;
         _httpClient.DefaultRequestHeaders.Add("x-api-key", settings["ApiKey"]);
         _httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
 
@@ -27,6 +34,7 @@ public class ClaudeClient : ILlmClient
         _systemPrompt = settings["SystemPrompt"];
         _url = settings["Url"]; // e.g., "https://api.anthropic.com/v1/messages"
         _retryPolicy = retryPolicy;
+        _usageLogger = usageLogger;
     }
 
     public async Task<string> ReviewAsync(string userPrompt, CancellationToken cancellationToken = default)
@@ -44,10 +52,16 @@ public class ClaudeClient : ILlmClient
             max_tokens = _maxTokens
         };
 
-        var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+        var stopwatch = Stopwatch.StartNew();
 
         var response = await _retryPolicy.ExecuteAsync(async () =>
-            await _httpClient.PostAsync(_url, content, cancellationToken));
+        {
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+            return await _httpClient.PostAsync(_url, content, cancellationToken);
+        });
+
+        stopwatch.Stop();
+        _usageLogger.LogUsage("claude", 0, 0, stopwatch.Elapsed);
 
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync(cancellationToken);

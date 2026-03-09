@@ -1,5 +1,6 @@
-﻿using System.Net;
+using System.Net;
 using System.Text.Json;
+using AiPrReview.Application.Exceptions;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
@@ -46,66 +47,30 @@ public class ReviewPullRequestFunction
         FunctionContext executionContext)
     {
         var httpResponse = req.CreateResponse();
-        PrReviewQueueMessage? queueMessage = null;
-
-        // Parse request body
-        ReviewRequest? input;
-        try
-        {
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            input = JsonSerializer.Deserialize<ReviewRequest>(requestBody, options);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to parse request body");
-            httpResponse.StatusCode = HttpStatusCode.BadRequest;
-            await httpResponse.WriteStringAsync("Invalid JSON request body.");
-            return new ReviewResponse { HttpResponse = httpResponse };
-        }
-
-        if (input == null || string.IsNullOrEmpty(input.RepoName) || input.PullRequestId <= 0)
-        {
-            httpResponse.StatusCode = HttpStatusCode.BadRequest;
-            await httpResponse.WriteStringAsync("Invalid request. Expected { repoName, pullRequestId, provider }.");
-            return new ReviewResponse { HttpResponse = httpResponse };
-        }
 
         try
         {
-            int fileCount = await EstimateFileCountAsync(input.RepoName, input.PullRequestId, input.Provider);
-            const int threshold = 25;
-
-            if (fileCount < threshold)
+            var input = await ParseAndValidateRequestAsync(req, httpResponse);
+            if (input is null)
             {
-                // Process Immediately
-                await _orchestrator.ExecuteReviewAsync(input.RepoName, input.PullRequestId, input.Provider);
-                httpResponse.StatusCode = HttpStatusCode.OK;
-                await httpResponse.WriteAsJsonAsync(new
-                {
-                    message = "Review completed successfully.",
-                    status = "completed"
-                });
+                // Response has already been written for bad request
+                return new ReviewResponse { HttpResponse = httpResponse };
             }
-            else
+
+            var decision = await DecideProcessingModeAsync(input, executionContext.CancellationToken);
+
+            if (decision.ProcessInline)
             {
-                // Queue for Background Processing
-                queueMessage = new PrReviewQueueMessage
+                await ProcessInlineAsync(input, httpResponse, executionContext.CancellationToken);
+
+                return new ReviewResponse
                 {
-                    RepositoryId = input.RepoName,
-                    PullRequestId = input.PullRequestId,
-                    Provider = input.Provider,
-                    EnqueuedAt = DateTime.UtcNow
+                    HttpResponse = httpResponse
                 };
-
-                httpResponse.StatusCode = HttpStatusCode.Accepted;
-                httpResponse.Headers.Add("Location", $"https://{req.Url.Host}/api/review-status/{Guid.NewGuid()}");
-                await httpResponse.WriteAsJsonAsync(new
-                {
-                    message = "Review queued due to size.",
-                    status = "queued"
-                });
             }
+
+            var queueMessage = CreateQueueMessage(input);
+            await WriteQueuedResponseAsync(httpResponse, req);
 
             return new ReviewResponse
             {
@@ -113,33 +78,110 @@ public class ReviewPullRequestFunction
                 Message = queueMessage
             };
         }
+        catch (ProviderNotFoundException ex)
+        {
+            _logger.LogWarning(ex, "Provider not found while processing PR review request.");
+            httpResponse.StatusCode = HttpStatusCode.BadRequest;
+            await httpResponse.WriteStringAsync("The specified provider is not configured or inactive.");
+            return new ReviewResponse { HttpResponse = httpResponse };
+        }
+        catch (NoActiveLlmProviderException ex)
+        {
+            _logger.LogError(ex, "No active LLM provider available to process PR review.");
+            httpResponse.StatusCode = HttpStatusCode.ServiceUnavailable;
+            await httpResponse.WriteStringAsync("No active AI provider is configured. Please try again later.");
+            return new ReviewResponse { HttpResponse = httpResponse };
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing PR review for repository {RepoId}, PR {PrId}", input.RepoName, input.PullRequestId);
+            _logger.LogError(ex, "Error processing PR review HTTP request.");
             httpResponse.StatusCode = HttpStatusCode.InternalServerError;
-            await httpResponse.WriteStringAsync("An error occurred while processing the PR review.");
+            await httpResponse.WriteStringAsync("An unexpected error occurred while processing the PR review.");
             return new ReviewResponse { HttpResponse = httpResponse };
         }
     }
 
-    private async Task<int> EstimateFileCountAsync(string repoName, int pullRequestId, string provider)
+    private static async Task<ReviewRequest?> ParseAndValidateRequestAsync(HttpRequestData req, HttpResponseData httpResponse)
+    {
+        ReviewRequest? input;
+        try
+        {
+            using var reader = new StreamReader(req.Body);
+            var requestBody = await reader.ReadToEndAsync();
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            input = JsonSerializer.Deserialize<ReviewRequest>(requestBody, options);
+        }
+        catch (Exception)
+        {
+            httpResponse.StatusCode = HttpStatusCode.BadRequest;
+            await httpResponse.WriteStringAsync("Invalid JSON request body.");
+            return null;
+        }
+
+        if (input is null || string.IsNullOrWhiteSpace(input.RepoName) || input.PullRequestId <= 0 || string.IsNullOrWhiteSpace(input.Provider))
+        {
+            httpResponse.StatusCode = HttpStatusCode.BadRequest;
+            await httpResponse.WriteStringAsync("Invalid request. Expected { repoName, pullRequestId, provider }.");
+            return null;
+        }
+
+        return input;
+    }
+
+    private async Task<(bool ProcessInline, int FileCount)> DecideProcessingModeAsync(ReviewRequest input, CancellationToken cancellationToken)
+    {
+        const int threshold = 25;
+        var fileCount = await EstimateFileCountAsync(input.RepoName, input.PullRequestId, input.Provider, cancellationToken);
+
+        return (fileCount < threshold, fileCount);
+    }
+
+    private async Task ProcessInlineAsync(ReviewRequest input, HttpResponseData httpResponse, CancellationToken cancellationToken)
+    {
+        await _orchestrator.ExecuteReviewAsync(input.RepoName, input.PullRequestId, input.Provider, cancellationToken);
+
+        httpResponse.StatusCode = HttpStatusCode.OK;
+        await httpResponse.WriteAsJsonAsync(new
+        {
+            message = "Review completed successfully.",
+            status = "completed"
+        });
+    }
+
+    private static PrReviewQueueMessage CreateQueueMessage(ReviewRequest input) =>
+        new()
+        {
+            RepositoryId = input.RepoName,
+            PullRequestId = input.PullRequestId,
+            Provider = input.Provider,
+            EnqueuedAt = DateTime.UtcNow
+        };
+
+    private static async Task WriteQueuedResponseAsync(HttpResponseData httpResponse, HttpRequestData req)
+    {
+        httpResponse.StatusCode = HttpStatusCode.Accepted;
+        httpResponse.Headers.Add("Location", $"https://{req.Url.Host}/api/review-status/{Guid.NewGuid()}");
+        await httpResponse.WriteAsJsonAsync(new
+        {
+            message = "Review queued due to size.",
+            status = "queued"
+        });
+    }
+
+    private async Task<int> EstimateFileCountAsync(string repoName, int pullRequestId, string provider, CancellationToken cancellationToken)
     {
         try
         {
-            // Convert the provider string to the ProviderType enum
             if (!Enum.TryParse<ProviderType>(provider, true, out var providerEnum))
             {
                 throw new ArgumentException($"Invalid provider type: {provider}");
             }
 
-            // Get global provider config
             var providerConfig = await _configService.GetProviderConfigAsync(providerEnum);
 
-            // Create repository provider using config and repo name
             var repoProvider = _repoProviderFactory.Create(providerConfig, repoName);
 
-            // Fetch changed files (metadata only, no diffs)
-            var files = await repoProvider.GetChangedFilesAsync("", pullRequestId);
+            var files = await repoProvider.GetChangedFilesAsync(providerConfig.ApiUrl, pullRequestId);
             return files.Count;
         }
         catch (Exception ex)
