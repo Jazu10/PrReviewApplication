@@ -1,0 +1,14 @@
+﻿using AiPrReview.Core.Interfaces;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace AiPrReview.Application.Interfaces
+{
+    public interface ILlmClientFactory
+    {
+        ILlmClient Create(string providerName, IDictionary<string, string> settings);
+    }
+}

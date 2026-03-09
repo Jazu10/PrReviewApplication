@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "AiPrReview": {
+      "commandName": "Project",
+      "commandLineArgs": "--port 7062"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "launchUrl": "{Scheme}://{ServiceHost}:{ServicePort}",
+      "containerRunArguments": "--init",
+      "httpPort": 34207,
+      "useSSL": false
+    }
+  }
+}
