@@ -1,0 +1,10 @@
+{
+  "IsEncrypted": false,
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=MSI;Database=AiPrReview;User=sa;Password=Password123;Encrypt=false;TrustServerCertificate=True;MultipleActiveResultSets=false"
+  },
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
+  }
+}

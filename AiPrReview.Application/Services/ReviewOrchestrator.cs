@@ -88,7 +88,7 @@ namespace AiPrReview.Application.Services;
             FilePath = c.FilePath,
             Status = c.Status,
             Diff = c.Diff,
-            Content = c.Content
+            Content = c.Content,
         }).ToList();
 
         return (prInfo, changedFiles);

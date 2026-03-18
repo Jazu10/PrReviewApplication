@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="AiPrReview.Application/AiPrReview.Application.csproj" />
+  <Project Path="AiPrReview.Core/AiPrReview.Core.csproj" />
+  <Project Path="AiPrReview.Infrastructure/AiPrReview.Infrastructure.csproj" />
+  <Project Path="AiPrReview.Tests/AiPrReview.Tests.csproj" />
+  <Project Path="AiPrReview/AiPrReview.csproj" />
+</Solution>

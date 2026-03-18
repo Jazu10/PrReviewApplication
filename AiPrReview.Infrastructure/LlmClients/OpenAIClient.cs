@@ -46,7 +46,6 @@ public class OpenAIClient : ILlmClient
             new { role = "user", content = userPrompt }
         },
             temperature = _temperature,
-            // Ensure this value is high enough in your settings (e.g., 4000)
             max_tokens = _maxTokens
         };
 
@@ -54,7 +53,6 @@ public class OpenAIClient : ILlmClient
 
         var response = await _retryPolicy.ExecuteAsync(async () =>
         {
-            // Use a fresh StringContent for each retry to avoid stream-read issues
             var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
             return await _httpClient.PostAsync(_url, content, cancellationToken);
         });
@@ -62,7 +60,13 @@ public class OpenAIClient : ILlmClient
         stopwatch.Stop();
         _usageLogger.LogUsage("openai", 0, 0, stopwatch.Elapsed);
 
-        response.EnsureSuccessStatusCode();
+        // 👇 THE FIX: Read the actual OpenAI error before throwing
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            // This will log exactly what is wrong (e.g., "context_length_exceeded" or "invalid_string")
+            throw new HttpRequestException($"OpenAI API Error {(int)response.StatusCode}: {errorJson}");
+        }
 
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         using var doc = JsonDocument.Parse(json);
@@ -72,8 +76,6 @@ public class OpenAIClient : ILlmClient
         string finishReason = choice.GetProperty("finish_reason").GetString()!;
         if (finishReason == "length")
         {
-            // This is your 'Partial String' culprit!
-            // We log a warning so you know you need to increase MaxTokens.
             Console.WriteLine("WARNING: AI response was truncated because of MaxTokens limit.");
         }
 
